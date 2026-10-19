@@ -118,7 +118,7 @@ public final class TradeScreen extends Screen {
         catalogH = Math.min(255, ph - 20);
         catalogX = left + (pw - catalogW) / 2;
         catalogY = top + (ph - catalogH) / 2;
-        search = field(left + 165, top + 48, pw - 227, "screen.trade_hub.search", "");
+        search = field(left + 115, top + 60, pw - 227, "screen.trade_hub.search", "");
         wantedSearch = field(modalX + modalW / 2 + 18, modalY + 76, modalW / 2 - 66, "screen.trade_hub.wanted_search", "");
         wantedSearch.setEditable(false);
         wantedSearch.setValue(new ItemStack(BuiltInRegistries.ITEM.get(new ResourceLocation("minecraft:diamond"))).getHoverName().getString());
@@ -192,6 +192,84 @@ public final class TradeScreen extends Screen {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
+    private record ClickArea(int x, int y, int width, int height) {
+    }
+
+    private boolean hit(double mx, double my, ClickArea area) {
+        return hit(mx, my, area.x(), area.y(), area.width(), area.height());
+    }
+
+    private ClickArea mineButtonArea() {
+        return new ClickArea(left + 30, top + 140, 88, 32);
+    }
+
+    private ClickArea filterButtonArea() {
+        return new ClickArea(left + 30, top + 220, 88, 32);
+    }
+
+    private ClickArea upButtonArea() {
+        return new ClickArea(left + pw - 64, top + 100, 26, 26);
+    }
+
+    private ClickArea downButtonArea() {
+        return new ClickArea(left + pw - 64, top + ph - 107, 26, 26);
+    }
+
+    private ClickArea createButtonArea() {
+        return new ClickArea(left + pw / 2 - 90, top + ph - 70, 90, 32);
+    }
+
+    private ClickArea claimButtonArea() {
+        ClickArea createButton = createButtonArea();
+        return new ClickArea(createButton.x() + 100, createButton.y() + 1, 88, 32);
+    }
+
+    private ClickArea cardArea(int position) {
+        return new ClickArea(cardsX() + (position % 2) * (CARD_W + CARD_GAP) - 56,
+            cardsY() + (position / 2) * CARD_STEP_Y + 20, CARD_W, CARD_H);
+    }
+
+    private ClickArea toggleButtonArea(ClickArea card) {
+        return new ClickArea(card.x() + CARD_W - 12, card.y() - 2, 19, 19);
+    }
+
+    private ClickArea deleteButtonArea(ClickArea card) {
+        return new ClickArea(card.x() + CARD_W - 12, card.y() + 22, 19, 19);
+    }
+
+    private ClickArea bidButtonArea() {
+        return new ClickArea(cardsX() - 16, top + ph - 100, 121, 26);
+    }
+
+    private ClickArea bidSubmitButtonArea() {
+        ClickArea bidButton = bidButtonArea();
+        return new ClickArea(bidButton.x() + 190, bidButton.y() + 1, 26, 26);
+    }
+
+    private ClickArea createCloseButtonArea() {
+        return new ClickArea(modalX + modalW - 43, modalY + 18, 25, 25);
+    }
+
+    private ClickArea createModeButtonArea() {
+        return new ClickArea(modalX + 23, modalY + 155, 150, 30);
+    }
+
+    private ClickArea publishButtonArea() {
+        return new ClickArea(modalX + (modalW - 164) / 2, modalY + modalH - 38, 164, 30);
+    }
+
+    private ClickArea catalogCloseButtonArea() {
+        return new ClickArea(catalogX + catalogW - 37, catalogY + 15, 23, 23);
+    }
+
+    private ClickArea catalogUpButtonArea() {
+        return new ClickArea(catalogX + catalogW - 42, catalogY + 79, 23, 23);
+    }
+
+    private ClickArea catalogDownButtonArea() {
+        return new ClickArea(catalogX + catalogW - 42, catalogY + 163, 23, 23);
+    }
+
     private void text(GuiGraphics g, Component label, int x, int y, int color) {
         int border = 0xff2b1a10;
         g.drawString(font, label, x - 1, y, border, false);
@@ -229,9 +307,17 @@ public final class TradeScreen extends Screen {
         g.blit(texture(key), x, y, w, h, 0, 0, texWidth(key), texHeight(key), texWidth(key), texHeight(key));
     }
 
+    private void sprite(GuiGraphics g, String key, ClickArea area) {
+        sprite(g, key, area.x(), area.y(), area.width(), area.height());
+    }
+
     private void button(GuiGraphics g, String key, Component label, int x, int y, int w, int h) {
         sprite(g, key, x, y, w, h);
         centered(g, label, x + w / 2, y + (h - 8) / 2, 0xff2b4750);
+    }
+
+    private void button(GuiGraphics g, String key, Component label, ClickArea area) {
+        button(g, key, label, area.x(), area.y(), area.width(), area.height());
     }
 
     private ResourceLocation face(TradeRecord record) {
@@ -244,6 +330,16 @@ public final class TradeScreen extends Screen {
         return DefaultPlayerSkin.getDefaultSkin(record.owner);
     }
 
+    private boolean matchesItemSearch(ItemStack item, String query) {
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item.getItem());
+        if (query.startsWith("@")) {
+            String namespace = query.substring(1).trim();
+            return !namespace.isEmpty() && id.getNamespace().toLowerCase(Locale.ROOT).contains(namespace);
+        }
+        return item.getHoverName().getString().toLowerCase(Locale.ROOT).contains(query)
+            || id.toString().toLowerCase(Locale.ROOT).contains(query);
+    }
+
     private List<TradeRecord> filtered() {
         List<TradeRecord> result = new ArrayList<>();
         String query = search.getValue().trim().toLowerCase(Locale.ROOT);
@@ -253,9 +349,9 @@ public final class TradeScreen extends Screen {
             if (!mine && !record.enabled) continue;
             if (filter.equals("auction") && !record.auction) continue;
             if (filter.equals("trade") && record.auction) continue;
-            if (!query.isEmpty() && !record.offered.getHoverName().getString().toLowerCase(Locale.ROOT).contains(query)
-                && !record.wanted.getHoverName().getString().toLowerCase(Locale.ROOT).contains(query)
-                && !record.ownerName.toLowerCase(Locale.ROOT).contains(query)) continue;
+            if (!query.isEmpty() && !matchesItemSearch(record.offered, query)
+                && !matchesItemSearch(record.wanted, query)
+                && (query.startsWith("@") || !record.ownerName.toLowerCase(Locale.ROOT).contains(query))) continue;
             result.add(record);
         }
         return result;
@@ -292,7 +388,7 @@ public final class TradeScreen extends Screen {
         int itemY = y + 10;
         g.renderItem(record.wanted, leftItemX, itemY);
         g.renderItem(record.offered, rightItemX, itemY);
-        sprite(g, record.auction ? "icon_auction" : "icon_trade", x + 59, y + 6, 22, 25);
+        sprite(g, record.auction ? "icon_auction" : "icon_trade", x + 56, y + 6, 26, 26);
         String wantQuantity = String.valueOf(record.auction ? Math.max(record.highestBid, record.wantedCount) : record.wantedCount);
         String offerQuantity = String.valueOf(record.offeredCount);
         text(g, wantQuantity, leftItemX - 4 - font.width(wantQuantity), y + 14, 0xffffffff);
@@ -302,8 +398,9 @@ public final class TradeScreen extends Screen {
         PlayerFaceRenderer.draw(g, face(record), headX, headY, 18);
         centered(g, record.ownerName, x + CARD_W / 2, headY + 20, 0xfff9ead6);
         if (mine) {
-            sprite(g, record.enabled ? "icon_toggle_on" : "icon_toggle_off", x + CARD_W - 22, y + 2, 19, 19);
-            sprite(g, "icon_delete", x + CARD_W - 22, y + 22, 19, 19);
+            ClickArea card = new ClickArea(x, y, CARD_W, CARD_H);
+            sprite(g, record.enabled ? "icon_toggle_on" : "icon_toggle_off", toggleButtonArea(card));
+            sprite(g, "icon_delete", deleteButtonArea(card));
         }
         if (hit(mx, my, leftItemX, itemY, 16, 16)) {
             g.renderTooltip(font, record.wanted, mx, my);
@@ -314,32 +411,27 @@ public final class TradeScreen extends Screen {
     }
 
     private void renderMain(GuiGraphics g, int mx, int my) {
-        button(g, mine ? "btn_wide_green" : "btn_wide_blue", tr("screen.trade_hub.mine"), left + 16, top + 46, 136, 31);
-        text(g, tr("screen.trade_hub.mine_count", data.getInt("mine"), data.getInt("limit")), left + 22, top + 83, 0xffffffff);
-        button(g, "btn_wide_blue", tr("screen.trade_hub.filter." + filter), left + 16, top + 111, 136, 31);
-        centered(g, tr("screen.trade_hub.search"), left + 165 + (pw - 227) / 2, top + 34, 0xffffffff);
+        button(g, mine ? "btn_wide_green" : "btn_wide_blue", tr("screen.trade_hub.mine"), mineButtonArea());
+        text(g, tr("screen.trade_hub.mine_count", data.getInt("mine"), data.getInt("limit")), left + 34, top + 120, 0xffffffff);
+        button(g, "btn_wide_blue", tr("screen.trade_hub.filter." + filter), filterButtonArea());
         List<TradeRecord> list = filtered();
         scroll = Math.min(scroll, maxScroll());
         for (int index = scroll * 2; index < Math.min(list.size(), (scroll + visibleRows()) * 2); index++) {
             int position = index - scroll * 2;
-            int x = cardsX() + (position % 2) * (CARD_W + CARD_GAP);
-            int y = cardsY() + (position / 2) * CARD_STEP_Y;
-            drawCard(g, list.get(index), x, y, mx, my);
+            ClickArea card = cardArea(position);
+            drawCard(g, list.get(index), card.x(), card.y(), mx, my);
         }
-        sprite(g, "icon_up", left + pw - 40, top + 100, 23, 23);
-        sprite(g, "icon_down", left + pw - 40, top + ph - 107, 23, 23);
-        int bx = left + pw / 2 - 202;
-        int by = top + ph - 47;
-        button(g, "btn_wide_green", tr("screen.trade_hub.create"), bx, by, 188, 32);
-        button(g, "btn_wide_orange", tr("screen.trade_hub.claim", data.getInt("mail")), bx + 205, by, 188, 32);
+        sprite(g, "icon_up", upButtonArea());
+        sprite(g, "icon_down", downButtonArea());
+        button(g, "btn_wide_green", tr("screen.trade_hub.create"), createButtonArea());
+        button(g, "btn_wide_orange", tr("screen.trade_hub.claim", data.getInt("mail")), claimButtonArea());
         TradeRecord selectedRecord = selectedAuction();
         if (selectedRecord != null && !mine) {
-            int barX = cardsX() + 22;
-            int barY = top + ph - 83;
-            button(g, "btn_wide_orange", tr("screen.trade_hub.place_bid"), barX, barY, 121, 26);
-            bidCount.setX(barX + 127);
-            bidCount.setY(barY + 4);
-            sprite(g, "icon_add", barX + 190, barY + 1, 25, 25);
+            ClickArea bidButton = bidButtonArea();
+            button(g, "btn_wide_orange", tr("screen.trade_hub.place_bid"), bidButton);
+            bidCount.setX(bidButton.x() + 127);
+            bidCount.setY(bidButton.y() + 4);
+            sprite(g, "icon_add", bidSubmitButtonArea());
         }
     }
 
@@ -373,7 +465,7 @@ public final class TradeScreen extends Screen {
         int animateY = modalY + (modalH - animateH) / 2;
         g.blit(PAPER, modalX, animateY, modalW, animateH, 0, 0, 1024, 1024, 1024, 1024);
         centered(g, tr("screen.trade_hub.create_title"), modalX + modalW / 2, modalY + 20, 0xffffffff);
-        sprite(g, "icon_close", modalX + modalW - 43, modalY + 18, 25, 25);
+        sprite(g, "icon_close", createCloseButtonArea());
         int leftCenter = modalX + 90;
         int rightCenter = modalX + modalW / 2 + 18 + (modalW / 2 - 66) / 2;
         centered(g, tr("screen.trade_hub.your_item"), leftCenter, modalY + 57, 0xffffffff);
@@ -381,14 +473,13 @@ public final class TradeScreen extends Screen {
         sprite(g, "icon_filter", modalX + modalW - 47, modalY + 75, 22, 22);
         centered(g, tr("screen.trade_hub.amount"), modalX + 38 + 50, modalY + 112, 0xffffffff);
         centered(g, tr("screen.trade_hub.amount"), modalX + modalW / 2 + 68, modalY + 112, 0xffffffff);
-        button(g, auction ? "btn_wide_orange" : "btn_wide_green", tr(auction ? "screen.trade_hub.mode.auction" : "screen.trade_hub.mode.trade"), modalX + 23, modalY + 155, 150, 30);
+        button(g, auction ? "btn_wide_orange" : "btn_wide_green", tr(auction ? "screen.trade_hub.mode.auction" : "screen.trade_hub.mode.trade"), createModeButtonArea());
         if (auction) {
             centered(g, tr("screen.trade_hub.duration"), modalX + modalW / 2 + 68, modalY + 150, 0xffffffff);
         }
         text(g, tr("screen.trade_hub.select_item"), modalX + 25, modalY + 196, 0xffffffff);
         drawInventory(g, mx, my);
-        int publishX = modalX + (modalW - 164) / 2;
-        button(g, "btn_wide_green", tr("screen.trade_hub.publish"), publishX, modalY + modalH - 38, 164, 30);
+        button(g, "btn_wide_green", tr("screen.trade_hub.publish"), publishButtonArea());
         if (slot >= 0 && minecraft != null && minecraft.player != null) {
             ItemStack item = minecraft.player.getInventory().getItem(slot);
             if (!item.isEmpty()) {
@@ -403,8 +494,7 @@ public final class TradeScreen extends Screen {
         lastCatalogQuery = q;
         catalogResults.clear();
         for (ItemStack item : catalog) {
-            ResourceLocation id = BuiltInRegistries.ITEM.getKey(item.getItem());
-            if (q.isEmpty() || item.getHoverName().getString().toLowerCase(Locale.ROOT).contains(q) || id.toString().contains(q)) {
+            if (q.isEmpty() || matchesItemSearch(item, q)) {
                 catalogResults.add(item);
             }
         }
@@ -419,7 +509,7 @@ public final class TradeScreen extends Screen {
         g.fill(0, 0, width, height, 0xa8000000);
         g.blit(PAPER, catalogX, catalogY, catalogW, catalogH, 0, 0, 1024, 1024, 1024, 1024);
         centered(g, tr("screen.trade_hub.catalog_title"), catalogX + catalogW / 2, catalogY + 22, 0xffffffff);
-        sprite(g, "icon_close", catalogX + catalogW - 37, catalogY + 15, 23, 23);
+        sprite(g, "icon_close", catalogCloseButtonArea());
         catalogSearch.render(g, mx, my, delta);
         filterCatalog();
         int startX = catalogX + (catalogW - CATALOG_COLUMNS * CATALOG_CELL) / 2;
@@ -440,8 +530,8 @@ public final class TradeScreen extends Screen {
                 g.renderTooltip(font, stack, mx, my);
             }
         }
-        sprite(g, "icon_up", catalogX + catalogW - 42, startY + 2, 23, 23);
-        sprite(g, "icon_down", catalogX + catalogW - 42, startY + 86, 23, 23);
+        sprite(g, "icon_up", catalogUpButtonArea());
+        sprite(g, "icon_down", catalogDownButtonArea());
         centered(g, tr("screen.trade_hub.catalog_count", catalogResults.size()), catalogX + catalogW / 2, catalogY + catalogH - 31, 0xffffffff);
     }
 
@@ -544,19 +634,19 @@ public final class TradeScreen extends Screen {
     }
 
     private boolean catalogClick(double mx, double my) {
-        if (hit(mx, my, catalogX + catalogW - 37, catalogY + 15, 23, 23)) {
+        if (hit(mx, my, catalogCloseButtonArea())) {
             playClick();
             closeCatalog();
             return true;
         }
         int startX = catalogX + (catalogW - CATALOG_COLUMNS * CATALOG_CELL) / 2;
         int startY = catalogY + 77;
-        if (hit(mx, my, catalogX + catalogW - 42, startY + 2, 23, 23)) {
+        if (hit(mx, my, catalogUpButtonArea())) {
             playClick();
             catalogScroll = Math.max(0, catalogScroll - 1);
             return true;
         }
-        if (hit(mx, my, catalogX + catalogW - 42, startY + 86, 23, 23)) {
+        if (hit(mx, my, catalogDownButtonArea())) {
             playClick();
             catalogScroll = Math.min(maxCatalogScroll(), catalogScroll + 1);
             return true;
@@ -581,7 +671,7 @@ public final class TradeScreen extends Screen {
     }
 
     private boolean createClick(double mx, double my) {
-        if (hit(mx, my, modalX + modalW - 43, modalY + 18, 25, 25)) {
+        if (hit(mx, my, createCloseButtonArea())) {
             playClick();
             closeCreate();
             return true;
@@ -591,7 +681,7 @@ public final class TradeScreen extends Screen {
             openCatalog();
             return true;
         }
-        if (hit(mx, my, modalX + 23, modalY + 155, 150, 30)) {
+        if (hit(mx, my, createModeButtonArea())) {
             playClick();
             auction = !auction;
             updateVisibility();
@@ -611,8 +701,7 @@ public final class TradeScreen extends Screen {
                 }
             }
         }
-        int publishX = modalX + (modalW - 164) / 2;
-        if (hit(mx, my, publishX, modalY + modalH - 38, 164, 30)) {
+        if (hit(mx, my, publishButtonArea())) {
             playClick();
             if (slot < 0) {
                 showNotice("message.trade_hub.select_offer");
@@ -643,9 +732,7 @@ public final class TradeScreen extends Screen {
             if (createClick(mx, my)) return true;
             return super.mouseClicked(mx, my, button);
         }
-        int bx = left + pw / 2 - 202;
-        int by = top + ph - 47;
-        if (hit(mx, my, bx, by, 188, 32)) {
+        if (hit(mx, my, createButtonArea())) {
             playClick();
             create = true;
             selected = null;
@@ -654,12 +741,12 @@ public final class TradeScreen extends Screen {
             updateVisibility();
             return true;
         }
-        if (hit(mx, my, bx + 205, by, 188, 32)) {
+        if (hit(mx, my, claimButtonArea())) {
             playClick();
             action("claim", new UUID(0, 0), 0);
             return true;
         }
-        if (hit(mx, my, left + 16, top + 46, 136, 31)) {
+        if (hit(mx, my, mineButtonArea())) {
             playClick();
             mine = !mine;
             scroll = 0;
@@ -667,7 +754,7 @@ public final class TradeScreen extends Screen {
             updateVisibility();
             return true;
         }
-        if (hit(mx, my, left + 16, top + 111, 136, 31)) {
+        if (hit(mx, my, filterButtonArea())) {
             playClick();
             filter = filter.equals("all") ? "trade" : filter.equals("trade") ? "auction" : "all";
             scroll = 0;
@@ -675,21 +762,19 @@ public final class TradeScreen extends Screen {
             updateVisibility();
             return true;
         }
-        if (hit(mx, my, left + pw - 40, top + 100, 23, 23)) {
+        if (hit(mx, my, upButtonArea())) {
             playClick();
             scroll = Math.max(0, scroll - 1);
             return true;
         }
-        if (hit(mx, my, left + pw - 40, top + ph - 107, 23, 23)) {
+        if (hit(mx, my, downButtonArea())) {
             playClick();
             scroll = Math.min(maxScroll(), scroll + 1);
             return true;
         }
         TradeRecord chosen = selectedAuction();
         if (chosen != null && !mine) {
-            int barX = cardsX() + 22;
-            int barY = top + ph - 83;
-            if (hit(mx, my, barX, barY, 121, 26) || hit(mx, my, barX + 190, barY + 1, 25, 25)) {
+            if (hit(mx, my, bidButtonArea()) || hit(mx, my, bidSubmitButtonArea())) {
                 playClick();
                 action("bid", chosen.id, number(bidCount.getValue(), 0));
                 return true;
@@ -697,21 +782,20 @@ public final class TradeScreen extends Screen {
         }
         List<TradeRecord> list = filtered();
         for (int index = scroll * 2; index < Math.min(list.size(), (scroll + visibleRows()) * 2); index++) {
-            int pos = index - scroll * 2;
-            int x = cardsX() + (pos % 2) * (CARD_W + CARD_GAP);
-            int y = cardsY() + (pos / 2) * CARD_STEP_Y;
+            int position = index - scroll * 2;
+            ClickArea card = cardArea(position);
             TradeRecord record = list.get(index);
-            if (mine && hit(mx, my, x + CARD_W - 22, y + 2, 19, 19)) {
+            if (mine && hit(mx, my, toggleButtonArea(card))) {
                 playClick();
                 action("toggle", record.id, 0);
                 return true;
             }
-            if (mine && hit(mx, my, x + CARD_W - 22, y + 22, 19, 19)) {
+            if (mine && hit(mx, my, deleteButtonArea(card))) {
                 playClick();
                 action("delete", record.id, 0);
                 return true;
             }
-            if (hit(mx, my, x, y, CARD_W, CARD_H + 16)) {
+            if (hit(mx, my, card.x(), card.y(), card.width(), card.height() + 16)) {
                 playClick();
                 if (!mine && !record.auction) {
                     action("buy", record.id, 0);
@@ -729,6 +813,9 @@ public final class TradeScreen extends Screen {
     @Override
     public boolean keyPressed(int key, int scan, int modifiers) {
         if (minecraft != null && minecraft.options.keyInventory.matches(key, scan)) {
+            if (getFocused() instanceof EditBox activeField && activeField.isFocused() && activeField.visible) {
+                return super.keyPressed(key, scan, modifiers);
+            }
             onClose();
             return true;
         }
