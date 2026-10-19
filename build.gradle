@@ -1,0 +1,9 @@
+plugins { id 'net.minecraftforge.gradle' version '[6.0,6.2)' }
+group = 'com.pyding.trade_hub'
+version = '0.1.0'
+base { archivesName = 'trade_hub' }
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+minecraft { mappings channel: 'official', version: '1.20.1'; runs { client { workingDirectory project.file('run'); mods { trade_hub { source sourceSets.main } } }; server { workingDirectory project.file('run'); mods { trade_hub { source sourceSets.main } } } } }
+repositories { mavenCentral() }
+dependencies { minecraft 'net.minecraftforge:forge:1.20.1-47.3.0' }
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }

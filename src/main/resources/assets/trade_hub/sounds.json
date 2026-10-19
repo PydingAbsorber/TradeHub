@@ -1,0 +1,8 @@
+{
+  "trade_hub_button": {
+    "subtitle": "subtitles.trade_hub.button",
+    "sounds": [
+      "trade_hub:trade_hub_button"
+    ]
+  }
+}
